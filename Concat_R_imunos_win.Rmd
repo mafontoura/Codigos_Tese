@@ -1,0 +1,820 @@
+---
+title: "Imunos_analises"
+output: html_notebook
+---
+
+## Área do Labirinto
+###Cit7
+
+```{r}
+base_path = "Z:\\lnls/labs/tepui/proposals/20220506/Imagens_Marina/ABR_Placenta_Imuno/"
+marcador = "CITOQUERATINA" # PRECISA SER STRING
+arquivos = "/fiji_outputs/table_results/"
+
+path = paste0(base_path, marcador, arquivos)
+print(path)
+
+files = Sys.glob(paste0(path, "*.csv"))
+
+dfs = lapply(files, read.csv)
+
+df_final = do.call("rbind", dfs)
+
+df_final[with(df_final, grepl("MOCK", Label)),"grupo"] = "mock"
+df_final[with(df_final, grepl("USUV", Label)),"grupo"] = "usuv"
+df_final$grupo = as.factor(df_final$grupo)
+
+df_final[with(df_final, grepl("all", Label)),"regiao"] = "placenta"
+df_final[with(df_final, grepl("labiri", Label)),"regiao"] = "labirinto"
+df_final[with(df_final, grepl("subtra", Label)),"regiao"] = "decidua"
+df_final$regiao = as.factor(df_final$regiao)
+
+#df_final[with(df_final, grepl("mock", grupo) & regiao == "decidua"),"proporcoes"] = df_final[with(df_final, grepl("mock", grupo) & regiao == "decidua"),"Area"] / df_final[with(df_final, grepl("mock", grupo) & regiao == "placenta"),"Area"]
+
+#df_final[with(df_final, grepl("mock", grupo) & regiao == "labirinto"),"proporcoes"] = df_final[with(df_final, grepl("mock", grupo) & regiao == "labirinto"),"Area"] / df_final[with(df_final, grepl("mock", grupo) & regiao == "placenta"),"Area"]
+
+df_final[with(df_final, regiao == "placenta"),"proporcoes"] = df_final[with(df_final, regiao == "placenta"),"Area"] / df_final[with(df_final, regiao == "placenta"),"Area"]
+
+df_final[with(df_final, regiao == "labirinto"),"proporcoes"] = df_final[with(df_final, regiao == "labirinto"),"Area"] / df_final[with(df_final, regiao == "placenta"),"Area"]
+
+df_final[with(df_final, regiao == "decidua"),"proporcoes"] = df_final[with(df_final, regiao == "decidua"),"Area"] / df_final[with(df_final, regiao == "placenta"),"Area"]
+
+
+writexl::write_xlsx(df_final, paste0(path, marcador, "-df_final.xlsx"))
+
+##############
+# Calculate summary statistics by group
+summary <- df_final %>%
+  group_by(grupo,regiao) %>%
+  dplyr::summarise(
+            min = min(proporcoes),
+            q25 = quantile(proporcoes, 0.25),
+            median = median(proporcoes),
+            q75 = quantile(proporcoes, 0.75),
+            max = max(proporcoes),
+            mean = mean(proporcoes),
+            sd=sd(proporcoes),
+            count = n())
+
+print(summary)
+
+###############
+
+# Perform the Mann-Whitney U test ("non-parametric" t-test)
+ # escolher variavel e respectivo agrupamento, amostras NAO pareadas
+
+
+wilcox.test(df_final %>% filter(case_when(grupo=="mock" ~ regiao=="decidua" ) ) %>% pull(proporcoes),
+            df_final %>% filter(case_when(grupo=="usuv" ~ regiao=="decidua" ) ) %>% pull(proporcoes))
+
+##########
+library(ggstatsplot)
+sub_df = df_final[df_final$regiao=="decidua",]
+ggbetweenstats(
+  data=sub_df,
+  x=grupo, ## grouping/independent variable
+  y=proporcoes, ## dependent variables
+  type = "np", ## type of statistics
+  xlab = "Grupo", ## label for the x-axis
+  ylab = "Valor da area em microns", ## label for the y-axis
+  ## turn off messages
+  #ggtheme = ggplot2::theme_minimal(), ## a different theme
+  #package = c("gray","blue"),#"yarrr", ## package from which color palette is to be taken
+  #palette = "info2", ## choosing a different color palette
+  title = "Comparacao de CIT nas placentas"
+) +
+  ggplot2::scale_color_manual(values = c("#999999", "#3336FF")) +
+  ggplot2::theme(# remove the vertical grid lines
+           panel.grid.major.x = element_blank() ,
+           # explicitly set the horizontal lines (or they will disappear too)
+           panel.grid.major.y = element_blank()
+             #element_line( size=.1, color="black" )
+             )
+
+```
+
+## Perímetro de Vasos
+### Vim
+
+```{r}
+limpar_nomes = function(path){
+  nome_arq = fs::path_file(path)
+  nome = fs::path_ext_remove(strsplit(nome_arq, "_Vimentina_")[[1]][2])
+  return(nome)
+}
+
+viment_df = function(arquivo){
+  print(arquivo)
+  base_path = "Z:\\lnls/labs/tepui/proposals/20220506/Imagens_Marina/ABR_Placenta_Imuno/VIMENTINA/fiji_outputs/table_results/"
+  nome_all = paste0(base_path, "all-cells_Vimentina_", arquivo,".csv")
+  print(nome_all)
+  df_temp_all_cells = read.csv(nome_all)
+  print("oi")
+  
+  df_temp_skel = read.csv(paste0(base_path, "vim-skeleton_Vimentina_", arquivo,".csv") )
+  print("oi2")
+  df_temp_local_thick = read.csv(paste0(base_path, "vim-thickness_Vimentina_", arquivo,".csv") )
+  print("oi3")
+  
+  df_temp_local_thick["arquivo"] = arquivo
+  df_temp_local_thick["area_total"] = df_temp_all_cells["Area"]
+  df_temp_local_thick["perimetro_total"] = df_temp_skel["Area"]
+  
+  return(df_temp_local_thick)
+}
+
+#############################
+
+base_path = "Z:\\lnls/labs/tepui/proposals/20220506/Imagens_Marina/ABR_Placenta_Imuno/"
+#base_path = "/Volumes/ibira/lnls/labs/tepui/proposals/20220506/Imagens_Marina/ABR_Placenta_Imuno/"
+marcador = "VIMENTINA" # PRECISA SER STRING
+arquivos = "/fiji_outputs/table_results/"
+
+path = paste0(base_path, marcador, arquivos)
+print(path)
+
+files = Sys.glob(paste0(path, "*.csv"))
+nomes_unicos = unique(lapply(files,limpar_nomes))
+
+dfs = lapply(nomes_unicos, viment_df)
+
+df_final = do.call("rbind", dfs)
+
+#############
+df_final[with(df_final, grepl("MOCK", arquivo)),"grupo"] = " mock"
+df_final[with(df_final, grepl("USUV", arquivo)),"grupo"] = " usuv"
+df_final$grupo = as.factor(df_final$grupo)
+
+df_final["proporcao"] = df_final$perimetro_total / df_final$area_total
+
+writexl::write_xlsx(df_final, paste0(path, marcador, "-df_final.xlsx"))
+
+##############
+
+##############
+# Calculate summary statistics by group
+library(dplyr)
+summary <- df_final %>%
+  group_by(grupo) %>%
+  dplyr::summarise(
+            min = min(proporcao),
+            q25 = quantile(proporcao, 0.25),
+            median = median(proporcao),
+            q75 = quantile(proporcao, 0.75),
+            max = max(proporcao),
+            mean = mean(proporcao),
+            sd=sd(proporcao),
+            count = n())
+
+print(summary)
+
+###############
+ #####   STATISTICS
+
+# Perform the Mann-Whitney U test ("non-parametric" t-test)
+result <- wilcox.test(proporcao ~ grupo, data=df_final) # escolher variavel e respectivo agrupamento
+print(result)
+
+
+##########
+##########
+
+# Create a boxplot by group
+library(ggstatsplot)
+ggbetweenstats(
+  data=df_final,
+  x=grupo, ## grouping/independent variable
+  y=proporcao, ## dependent variables
+  type = "np", ## type of statistics
+  xlab = "Grupo", ## label for the x-axis
+  ylab = "Valor da area em microns", ## label for the y-axis
+  ## turn off messages
+  #ggtheme = ggplot2::theme_gray(), ## a different theme
+  title = "Perímetro total de vasos nas placentas",
+  centrality.plotting = FALSE
+) + 
+  ggplot2::scale_color_manual(values = c("#999999", "#3336FF")) +
+  ggplot2::theme_minimal()
+
+#library(ggplot2)
+# Create a histogram by group
+#sub_df = df_final[df_final$Area>10,]
+#ggplot(sub_df, aes(x = Area, fill = grupo)) +
+  #geom_histogram(position = "identity", alpha = 0.5, bins = 300) +
+  #geom_density(alpha=0.5)+
+  #scale_y_continuous(trans = "log10")+
+  #xlab("Value") +
+  #ylab("Frequency") +
+  #ggtitle("Histogram by Group")
+
+#### sobre o local_thickness
+result2 <- wilcox.test(Mean ~ grupo, data=df_final) # escolher variavel e respectivo agrupamento
+print(result2)
+
+ggbetweenstats(
+  data=df_final,
+  x=grupo, ## grouping/independent variable
+  y=Mean, ## dependent variables
+  type = "np", ## type of statistics
+  xlab = "Grupo", ## label for the x-axis
+  ylab = "Valor da area em microns", ## label for the y-axis
+  ## turn off messages
+  #ggtheme = ggplot2::theme_gray(), ## a different theme
+  title = "Perímetro total de vasos nas placentas",
+  centrality.plotting = FALSE
+) + 
+  ggplot2::scale_color_manual(values = c("#999999", "#3336FF")) +
+  ggplot2::theme_minimal()
+
+
+
+```
+
+## Número de Células Positivas
+###SLC
+
+```{r}
+
+SLC_df = function(path){
+  print(path)
+  nome_arq = fs::path_file(path)
+  nome = fs::path_ext_remove(strsplit(nome_arq, "all_cells_")[[1]][2])
+  
+  dir_name = fs::path_dir(path)
+  # buscar outro arquivo com nome igual
+  arq_cel_posit = list.files(dir_name, pattern=nome, full.names = TRUE)
+  for (i in arq_cel_posit){
+    arq_cel_posit = arq_cel_posit[grep("positive", arq_cel_posit)]
+  }
+  print(arq_cel_posit)
+  print("abrindo df1")
+  df_temp_1 = read.csv(path)
+  df_temp_1["Label"] = df_temp_1["X"]
+  df_temp_1 = df_temp_1[,2:9]
+  
+  print("abrindo df2")
+  df_temp_2 = read.csv(paste0(arq_cel_posit))
+  df_temp_2["positivo"] = "sim"
+  
+  library(dplyr)
+  library(purrr)
+
+  df_temp_final = reduce(list(df_temp_1, df_temp_2), full_join, by="Label")
+  df_temp_final["arquivo"] = nome
+
+  df_temp_final[which(is.na(df_temp_final["positivo"])),"positivo"] = "nao"
+  df_temp_final$positivo = as.factor(df_temp_final$positivo)
+  
+  return(df_temp_final)
+}
+
+#######################
+
+base_path = "Z:\\lnls/labs/tepui/proposals/20220506/Imagens_Marina/ABR_Placenta_Imuno/"
+#base_path = "/Volumes/ibira/lnls/labs/tepui/proposals/20220506/Imagens_Marina/ABR_Placenta_Imuno/"
+marcador = "SLC16A3" # PRECISA SER STRING
+arquivos = "/fiji_outputs/table_results/"
+
+path = paste0(base_path, marcador, arquivos)
+print(path)
+
+files = Sys.glob(paste0(path, "all_cells_*.csv"))
+
+dfs = lapply(files, SLC_df)
+
+df_final = do.call("rbind", dfs)
+
+
+#############
+df_final[with(df_final, grepl("MOCK", arquivo)),"grupo"] = " mock"
+df_final[with(df_final, grepl("USUV", arquivo)),"grupo"] = " usuv"
+df_final$grupo = as.factor(df_final$grupo)
+df_final$arquivo = as.factor(df_final$arquivo)
+
+
+writexl::write_xlsx(df_final, paste0(path, marcador, "-df_final.xlsx"))
+
+############### teste
+
+df_temp_total_geral = df_final %>%
+                      group_by(arquivo) %>%
+                      tally() %>%
+                      as.data.frame()
+
+
+df_temp_total_grupo = df_final %>%
+                      group_by(arquivo, positivo) %>%
+                      dplyr::summarise(
+                                contagem = n()
+                    ) %>% 
+                      as.data.frame()
+
+df_proporcao_SLC = reduce(list(df_temp_total_grupo, df_temp_total_geral), full_join, by="arquivo")
+df_proporcao_SLC["porcentagem"] = df_proporcao_SLC$contagem/df_proporcao_SLC$n
+
+writexl::write_xlsx(df_proporcao_SLC, paste0(path, marcador, "-df_proporcao.xlsx"))
+
+##############
+# Calculate summary statistics by group
+Value = "Area"
+summary <- df_final %>%
+  group_by(grupo) %>%
+  dplyr::summarise(
+            min = min(Area),
+            q25 = quantile(Area, 0.25),
+            median = median(Area),
+            q75 = quantile(Area, 0.75),
+            max = max(Area),
+            mean = mean(Area),
+            sd=sd(Area),
+            count = n())
+
+print(summary)
+
+###############
+
+# Perform the Mann-Whitney U test ("non-parametric" t-test)
+result <- wilcox.test(Area ~ grupo, data=df_final, paired=FALSE) # escolher variavel e respectivo agrupamento, amostras NAO pareadas
+print(result)
+
+##########
+
+# Create a boxplot by group
+
+library(ggplot2)
+# Create a histogram by group
+sub_df = df_final[df_final$Area>10,]
+ggplot(sub_df, aes(x = Area, fill = grupo)) +
+  geom_histogram(position = "identity", alpha = 0.5, bins = 300) +
+  #geom_density(alpha=0.5)+
+  scale_y_continuous(trans = "log10")+
+  xlab("Value") +
+  ylab("Frequency") +
+  ggtitle("Histogram by Group") +
+  ggplot2::scale_fill_manual(values = c("#999999", "#3336FF")) +
+  theme_minimal()
+
+library(ggstatsplot)
+ggbetweenstats(
+  data=df_final,
+  x=grupo, ## grouping/independent variable
+  y=Area, ## dependent variables
+  type = "np", ## type of statistics
+  xlab = "Grupo", ## label for the x-axis
+  ylab = "Valor da area em microns", ## label for the y-axis
+  ## turn off messages
+  #ggtheme = ggplot2::theme_minimal(), ## a different theme
+  #package = c("gray","blue"),#"yarrr", ## package from which color palette is to be taken
+  #palette = "info2", ## choosing a different color palette
+  title = "Comparacao de SLC nas placentas"
+) +
+  ggplot2::scale_color_manual(values = c("#999999", "#3336FF")) +
+  ggplot2::theme(# remove the vertical grid lines
+           panel.grid.major.x = element_blank() ,
+           # explicitly set the horizontal lines (or they will disappear too)
+           panel.grid.major.y = element_blank()
+             #element_line( size=.1, color="black" )
+             )
+```
+
+###EpCAM
+
+```{r}
+
+EPCAM_df = function(path){
+  print(path)
+  nome_arq = fs::path_file(path)
+  nome = fs::path_ext_remove(strsplit(nome_arq, "all_cells_")[[1]][2])
+  
+  dir_name = fs::path_dir(path)
+  # buscar outro arquivo com nome igual
+  arq_cel_posit = list.files(dir_name, pattern=nome, full.names = TRUE)
+  for (i in arq_cel_posit){
+    arq_cel_posit = arq_cel_posit[grep("positive", arq_cel_posit)]
+  }
+  print(arq_cel_posit)
+  print("abrindo df1")
+  df_temp_1 = read.csv(path)
+  df_temp_1["Label"] = df_temp_1["X"]
+  df_temp_1 = df_temp_1[,2:9]
+  
+  print("abrindo df2")
+  df_temp_2 = read.csv(paste0(arq_cel_posit))
+  df_temp_2["positivo"] = "sim"
+  
+  library(dplyr)
+  library(purrr)
+
+  df_temp_final = reduce(list(df_temp_1, df_temp_2), full_join, by="Label")
+  df_temp_final["arquivo"] = nome
+  print("aqui")
+  df_temp_final[which(is.na(df_temp_final["positivo"])),"positivo"] = "nao"
+  df_temp_final$positivo = as.factor(df_temp_final$positivo)
+  
+  return(df_temp_final)
+}
+
+#######################
+base_path = "Z:\\lnls/labs/tepui/proposals/20220506/Imagens_Marina/ABR_Placenta_Imuno/"
+#base_path = "/Volumes/ibira/lnls/labs/tepui/proposals/20220506/Imagens_Marina/ABR_Placenta_Imuno/"
+marcador = "EpCAM" # PRECISA SER STRING
+arquivos = "/fiji_outputs/table_results/"
+
+path = paste0(base_path, marcador, arquivos)
+print(path)
+
+files = Sys.glob(paste0(path, "all_cells_*.csv"))
+
+dfs = lapply(files, EPCAM_df)
+
+df_final = do.call("rbind", dfs)
+
+#############
+df_final[with(df_final, grepl("MOCK", arquivo)),"grupo"] = " mock"
+df_final[with(df_final, grepl("USUV", arquivo)),"grupo"] = " usuv"
+df_final$grupo = as.factor(df_final$grupo)
+df_final$arquivo = as.factor(df_final$arquivo)
+
+
+writexl::write_xlsx(df_final, paste0(path, marcador, "-df_final.xlsx"))
+
+############### teste
+
+df_temp_total_geral = df_final %>%
+                      group_by(arquivo) %>%
+                      tally() %>%
+                      as.data.frame()
+
+
+df_temp_total_grupo = df_final %>%
+                      group_by(arquivo, positivo) %>%
+                      dplyr::summarise(
+                                contagem = n()
+                    ) %>% 
+                      as.data.frame()
+
+df_proporcao_EPCAM = reduce(list(df_temp_total_grupo, df_temp_total_geral), full_join, by="arquivo")
+df_proporcao_EPCAM["porcentagem"] = df_proporcao_EPCAM$contagem/df_proporcao_EPCAM$n
+df_proporcao_EPCAM[with(df_proporcao_EPCAM, grepl("MOCK", arquivo)),"grupo"] = " mock"
+df_proporcao_EPCAM[with(df_proporcao_EPCAM, grepl("USUV", arquivo)),"grupo"] = " usuv"
+df_proporcao_EPCAM$grupo = as.factor(df_proporcao_EPCAM$grupo)
+df_proporcao_EPCAM$arquivo = as.factor(df_proporcao_EPCAM$arquivo)
+
+writexl::write_xlsx(df_proporcao_EPCAM, paste0(path, marcador, "-df_proporcao.xlsx"))
+
+##############
+# Calculate summary statistics by group
+summary <- df_final %>%
+  group_by(grupo) %>%
+  dplyr::summarise(
+            min = min(Area),
+            q25 = quantile(Area, 0.25),
+            median = median(Area),
+            q75 = quantile(Area, 0.75),
+            max = max(Area),
+            mean = mean(Area),
+            sd=sd(Area),
+            count = n())
+
+print(summary)
+
+###############
+
+# Perform the Mann-Whitney U test ("non-parametric" t-test)
+result <- wilcox.test(Area ~ grupo, data=df_final, paired=FALSE) # escolher variavel e respectivo agrupamento, amostras NAO pareadas
+print(result)
+
+##########
+
+# Create a boxplot by group
+
+library(ggplot2)
+# Create a histogram by group
+sub_df = df_final[df_final$Area>10,]
+ggplot(sub_df, aes(x = Area, fill = grupo)) +
+  geom_histogram(position = "identity", alpha = 0.5, bins = 300) +
+  #geom_density(alpha=0.5)+
+  scale_y_continuous(trans = "log10")+
+  xlab("Value") +
+  ylab("Frequency") +
+  ggtitle("Histogram by Group") +
+  ggplot2::scale_fill_manual(values = c("#999999", "#3336FF")) +
+  theme_minimal()
+
+library(ggstatsplot)
+ggbetweenstats(
+  data=df_final,
+  x=grupo, ## grouping/independent variable
+  y=Area, ## dependent variables
+  type = "np", ## type of statistics
+  xlab = "Grupo", ## label for the x-axis
+  ylab = "Valor da area em microns", ## label for the y-axis
+  ## turn off messages
+  #ggtheme = ggplot2::theme_minimal(), ## a different theme
+  #package = c("gray","blue"),#"yarrr", ## package from which color palette is to be taken
+  #palette = "info2", ## choosing a different color palette
+  title = "Comparacao de EPCAM nas placentas"
+) +
+  ggplot2::scale_color_manual(values = c("#999999", "#3336FF")) +
+  ggplot2::theme(# remove the vertical grid lines
+           panel.grid.major.x = element_blank() ,
+           # explicitly set the horizontal lines (or they will disappear too)
+           panel.grid.major.y = element_blank()
+             #element_line( size=.1, color="black" )
+             )
+```
+
+
+### H2A
+
+```{r}
+
+H2A_df = function(path){
+  print(path)
+  nome_arq = fs::path_file(path)
+  nome = fs::path_ext_remove(strsplit(nome_arq, "all_cells_")[[1]][2])
+  
+  dir_name = fs::path_dir(path)
+  # buscar outro arquivo com nome igual
+  arq_cel_posit = list.files(dir_name, pattern=nome, full.names = TRUE)
+  for (i in arq_cel_posit){
+    arq_cel_posit = arq_cel_posit[grep("positive", arq_cel_posit)]
+  }
+  print(arq_cel_posit)
+  print("abrindo df1")
+  df_temp_1 = read.csv(path)
+  df_temp_1["Label"] = df_temp_1["X"]
+  df_temp_1 = df_temp_1[,2:9]
+  
+  
+  print("abrindo df2")
+  df_temp_2 = read.csv(paste0(arq_cel_posit))
+  df_temp_2["positivo"] = "sim"
+  
+  library(dplyr)
+  library(purrr)
+
+  df_temp_final = reduce(list(df_temp_1, df_temp_2), full_join, by="Label")
+  df_temp_final["arquivo"] = nome
+  print("aqui")
+  df_temp_final[which(is.na(df_temp_final["positivo"])),"positivo"] = "nao"
+  df_temp_final$positivo = as.factor(df_temp_final$positivo)
+  
+  return(df_temp_final)
+}
+
+#######################
+base_path = "Z:\\lnls/labs/tepui/proposals/20220506/Imagens_Marina/ABR_Placenta_Imuno/"
+#base_path = "/Volumes/ibira/lnls/labs/tepui/proposals/20220506/Imagens_Marina/ABR_Placenta_Imuno/"
+marcador = "H2A" # PRECISA SER STRING
+arquivos = "/fiji_outputs/table_results/"
+
+path = paste0(base_path, marcador, arquivos)
+print(path)
+
+files = Sys.glob(paste0(path, "all_cells_*.csv"))
+
+dfs = lapply(files, H2A_df)
+
+df_final = do.call("rbind", dfs)
+
+#############
+df_final[with(df_final, grepl("MOCK", arquivo)),"grupo"] = " mock"
+df_final[with(df_final, grepl("USUV", arquivo)),"grupo"] = " usuv"
+df_final$grupo = as.factor(df_final$grupo)
+df_final$arquivo = as.factor(df_final$arquivo)
+
+writexl::write_xlsx(df_final, paste0(path, marcador, "-df_final.xlsx"))
+
+############### teste
+
+df_temp_total_geral = df_final %>%
+                      group_by(arquivo) %>%
+                      tally() %>%
+                      as.data.frame()
+
+
+df_temp_total_grupo = df_final %>%
+                      group_by(arquivo, positivo) %>%
+                      dplyr::summarise(
+                                contagem = n()
+                    ) %>% 
+                      as.data.frame()
+
+df_proporcao_H2A = reduce(list(df_temp_total_grupo, df_temp_total_geral), full_join, by="arquivo")
+df_proporcao_H2A["porcentagem"] = df_proporcao_H2A$contagem/df_proporcao_H2A$n
+df_proporcao_H2A[with(df_proporcao_H2A, grepl("MOCK", arquivo)),"grupo"] = " mock"
+df_proporcao_H2A[with(df_proporcao_H2A, grepl("USUV", arquivo)),"grupo"] = " usuv"
+df_proporcao_H2A$grupo = as.factor(df_proporcao_H2A$grupo)
+df_proporcao_H2A$arquivo = as.factor(df_proporcao_H2A$arquivo)
+
+writexl::write_xlsx(df_proporcao_H2A, paste0(path, marcador, "-df_proporcao.xlsx"))
+
+##############
+# Calculate summary statistics by group
+summary <- df_final %>%
+  group_by(grupo) %>%
+  dplyr::summarise(
+            min = min(Area),
+            q25 = quantile(Area, 0.25),
+            median = median(Area),
+            q75 = quantile(Area, 0.75),
+            max = max(Area),
+            mean = mean(Area),
+            sd=sd(Area),
+            count = n())
+
+print(summary)
+
+###############
+
+# Perform the Mann-Whitney U test ("non-parametric" t-test)
+result <- wilcox.test(Area ~ grupo, data=df_final, paired=FALSE) # escolher variavel e respectivo agrupamento, amostras NAO pareadas
+print(result)
+
+##########
+
+# Create a boxplot by group
+
+library(ggplot2)
+# Create a histogram by group
+sub_df = df_final[df_final$Area>10,]
+ggplot(sub_df, aes(x = Area, fill = grupo)) +
+  geom_histogram(position = "identity", alpha = 0.5, bins = 300) +
+  #geom_density(alpha=0.5)+
+  scale_y_continuous(trans = "log10")+
+  xlab("Value") +
+  ylab("Frequency") +
+  ggtitle("Histogram by Group") +
+  ggplot2::scale_fill_manual(values = c("#999999", "#3336FF")) +
+  theme_minimal()
+
+library(ggstatsplot)
+ggbetweenstats(
+  data=df_final,
+  x=grupo, ## grouping/independent variable
+  y=Area, ## dependent variables
+  type = "np", ## type of statistics
+  xlab = "Grupo", ## label for the x-axis
+  ylab = "Valor da area em microns", ## label for the y-axis
+  ## turn off messages
+  #ggtheme = ggplot2::theme_minimal(), ## a different theme
+  #package = c("gray","blue"),#"yarrr", ## package from which color palette is to be taken
+  #palette = "info2", ## choosing a different color palette
+  title = "Comparacao de EPCAM nas placentas"
+) +
+  ggplot2::scale_color_manual(values = c("#999999", "#3336FF")) +
+  ggplot2::theme(# remove the vertical grid lines
+           panel.grid.major.x = element_blank() ,
+           # explicitly set the horizontal lines (or they will disappear too)
+           panel.grid.major.y = element_blank()
+             #element_line( size=.1, color="black" )
+             )
+```
+
+### CD31
+
+```{r}
+
+CD31_df = function(path){
+  print(path)
+  nome_arq = fs::path_file(path)
+  nome = fs::path_ext_remove(strsplit(nome_arq, "all_cells_")[[1]][2])
+  
+  dir_name = fs::path_dir(path)
+  # buscar outro arquivo com nome igual
+  arq_cel_posit = list.files(dir_name, pattern=nome, full.names = TRUE)
+  for (i in arq_cel_posit){
+    arq_cel_posit = arq_cel_posit[grep("positive", arq_cel_posit)]
+  }
+  print(arq_cel_posit)
+  print("abrindo df1")
+  df_temp_1 = read.csv(path)
+  df_temp_1["Label"] = df_temp_1["X"]
+  df_temp_1 = df_temp_1[,2:9]
+  
+  
+  print("abrindo df2")
+  df_temp_2 = read.csv(paste0(arq_cel_posit))
+  df_temp_2["positivo"] = "sim"
+  
+  library(dplyr)
+  library(purrr)
+
+  df_temp_final = reduce(list(df_temp_1, df_temp_2), full_join, by="Label")
+  df_temp_final["arquivo"] = nome
+  print("aqui")
+  df_temp_final[which(is.na(df_temp_final["positivo"])),"positivo"] = "nao"
+  df_temp_final$positivo = as.factor(df_temp_final$positivo)
+  
+  return(df_temp_final)
+}
+
+#######################
+base_path = "Z:\\lnls/labs/tepui/proposals/20220506/Imagens_Marina/ABR_Placenta_Imuno/"
+#base_path = "/Volumes/ibira/lnls/labs/tepui/proposals/20220506/Imagens_Marina/ABR_Placenta_Imuno/"
+marcador = "CD31" # PRECISA SER STRING
+arquivos = "/fiji_outputs/table_results/"
+
+path = paste0(base_path, marcador, arquivos)
+print(path)
+
+files = Sys.glob(paste0(path, "all_cells_*.csv"))
+
+dfs = lapply(files, CD31_df)
+
+df_final = do.call("rbind", dfs)
+
+#############
+df_final[with(df_final, grepl("MOCK", arquivo)),"grupo"] = " mock"
+df_final[with(df_final, grepl("USUV", arquivo)),"grupo"] = " usuv"
+df_final$grupo = as.factor(df_final$grupo)
+df_final$arquivo = as.factor(df_final$arquivo)
+
+writexl::write_xlsx(df_final, paste0(path, marcador, "-df_final.xlsx"))
+
+############### teste
+
+df_temp_total_geral = df_final %>%
+                      group_by(arquivo) %>%
+                      tally() %>%
+                      as.data.frame()
+
+
+df_temp_total_grupo = df_final %>%
+                      group_by(arquivo, positivo) %>%
+                      dplyr::summarise(
+                                contagem = n()
+                    ) %>% 
+                      as.data.frame()
+
+df_proporcao_CD31 = reduce(list(df_temp_total_grupo, df_temp_total_geral), full_join, by="arquivo")
+df_proporcao_CD31["porcentagem"] = df_proporcao_CD31$contagem/df_proporcao_CD31$n
+df_proporcao_CD31[with(df_proporcao_CD31, grepl("MOCK", arquivo)),"grupo"] = " mock"
+df_proporcao_CD31[with(df_proporcao_CD31, grepl("USUV", arquivo)),"grupo"] = " usuv"
+df_proporcao_CD31$grupo = as.factor(df_proporcao_CD31$grupo)
+df_proporcao_CD31$arquivo = as.factor(df_proporcao_CD31$arquivo)
+
+writexl::write_xlsx(df_proporcao_CD31, paste0(path, marcador, "-df_proporcao.xlsx"))
+
+##############
+# Calculate summary statistics by group
+summary <- df_final %>%
+  group_by(grupo) %>%
+  dplyr::summarise(
+            min = min(Area),
+            q25 = quantile(Area, 0.25),
+            median = median(Area),
+            q75 = quantile(Area, 0.75),
+            max = max(Area),
+            mean = mean(Area),
+            sd=sd(Area),
+            count = n())
+
+print(summary)
+
+###############
+
+# Perform the Mann-Whitney U test ("non-parametric" t-test)
+result <- wilcox.test(Area ~ grupo, data=df_final, paired=FALSE) # escolher variavel e respectivo agrupamento, amostras NAO pareadas
+print(result)
+
+##########
+
+# Create a boxplot by group
+
+library(ggplot2)
+# Create a histogram by group
+sub_df = df_final[df_final$Area>10,]
+ggplot(sub_df, aes(x = Area, fill = grupo)) +
+  geom_histogram(position = "identity", alpha = 0.5, bins = 300) +
+  #geom_density(alpha=0.5)+
+  scale_y_continuous(trans = "log10")+
+  xlab("Value") +
+  ylab("Frequency") +
+  ggtitle("Histogram by Group") +
+  ggplot2::scale_fill_manual(values = c("#999999", "#3336FF")) +
+  theme_minimal()
+
+library(ggstatsplot)
+ggbetweenstats(
+  data=df_final,
+  x=grupo, ## grouping/independent variable
+  y=Area, ## dependent variables
+  type = "np", ## type of statistics
+  xlab = "Grupo", ## label for the x-axis
+  ylab = "Valor da area em microns", ## label for the y-axis
+  ## turn off messages
+  #ggtheme = ggplot2::theme_minimal(), ## a different theme
+  #package = c("gray","blue"),#"yarrr", ## package from which color palette is to be taken
+  #palette = "info2", ## choosing a different color palette
+  title = "Comparacao de EPCAM nas placentas"
+) +
+  ggplot2::scale_color_manual(values = c("#999999", "#3336FF")) +
+  ggplot2::theme(# remove the vertical grid lines
+           panel.grid.major.x = element_blank() ,
+           # explicitly set the horizontal lines (or they will disappear too)
+           panel.grid.major.y = element_blank()
+             #element_line( size=.1, color="black" )
+             )
+```

@@ -1,0 +1,79 @@
+---
+title: "R Notebook"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+
+
+```{r}
+library(readxl)
+
+dados_marina <- read_excel("Multiplex_para_R.xlsx", 
+    col_types = c("text", "text", "text", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", "numeric", 
+        "numeric"), na = c("OOR >", "NaN", ""))
+
+dados_marina$Group = factor(dados_marina$Group)
+dados_marina$Animal = factor(dados_marina$Animal)
+dados_marina$Sample = factor(dados_marina$Sample)
+dados_marina$Num = factor(dados_marina$Num)
+
+df = data.frame(dados_marina)
+#colnames(df)[1] = "grupos"
+
+```
+
+
+```{r, results='asis'}
+
+library(xtable)
+#print(xtable(summary(df), caption = "Summary DF", caption.placement="top", table.placement =""), scalebox=0.8, caption.placement = "top", comment = F)
+
+
+
+#message("running descriptive stats")
+library(reporttools)
+library("dplyr") 
+
+sample_name = 'BAÇO' ## COLOCAR O ORGAO (=COLUNA SAMPLE)
+
+df_temp = filter(df, Sample == sample_name)
+
+result = tableContinuous(df_temp[,5:24], weights = NA, subset = NA, 
+                group = df_temp$Group,   ##### AGRUPAMENTOS
+                stats = c("n", "min", "q1", "median", "mean", "q3", "max", "s", "iqr"), 
+                prec = 1, col.tit = NA,
+                col.tit.font = c("bf", "", "sf", "it", "rm"), 
+                print.pval = "kruskal",#c("none", "anova", "kruskal"), 
+                pval.bound = 10^-4, 
+                declare.zero = 10^-10, 
+                cap = paste("Estatística descritiva:", sample_name),
+                lab = "", 
+                font.size = "footnotesize",
+                longtable = TRUE, 
+                disp.cols = NA,
+                nams = NA,
+                comment = F)
+
+
+
+##Completely removing all lines:
+
+cat(gsub("\\\\hline\n[^\n]+& all &[^\n]+\n", "", result))
+
+###Keeping p-values:
+greg <- gregexpr("p (=|<) [^\n]+", result)
+regmatches(result, greg) <- list(gsub("(?<=&)[-.\\w ]+", " ", 
+                                      regmatches(result, greg)[[1]], perl = TRUE))
+cat(result)
+#tableNominal(data.frame(df[,5:33]), weights = NA, subset = NA, group = df$Group)
+```
